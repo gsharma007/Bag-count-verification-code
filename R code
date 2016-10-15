@@ -1,0 +1,33 @@
+library(dplyr)
+system("./bag_count_verificaiton.sh")
+packages <- read.csv("package_sample_scanned.csv",stringsAsFactors = F)
+dpc_dc <- read.csv("DPC_DC.csv",stringsAsFactors = F)
+dpc_dc <- dpc_dc %>% mutate(DC = toupper(DC),DPC = toupper(DPC))
+date_convert <- function(input_dates) return(as.POSIXct(paste(substr(input_dates, 14, 23), substr(input_dates, 25, 32), sep=" "), format= "%Y-%m-%d %H:%M:%S"))
+packages <- packages %>% mutate(sd = date_convert(sd))
+
+pp <- packages %>% 
+  mutate(rowid = 1:nrow(packages)) %>% as.data.frame() %>%   group_by(rowid) %>% filter(dest != "", !grepl(dest,cs.sl),!grepl(cs.sl,dest)) %>% as.data.frame() %>%
+  filter(act == "+B",cs.ss != "Delivered",cs.ss != "LOST", !grepl("Cancel",cs.sr)) %>% 
+  mutate(dest = toupper(dest)) %>%  as.data.frame() %>%  mutate(dest = gsub(" [(]KARNATAKA[)]","",dest)) %>%  mutate(cs.dest = toupper(cs.dest)) %>% as.data.frame()
+pp %>% filter(dest %in% dpc_dc[dpc_dc$DPC == "HSR _LAYOUT PC","DC"]) %>% select(wbn,pid) %>% summarise(n_distinct(pid))
+pp <- pp %>%  left_join(dpc_dc,by=c("dest"="DC"))  %>% as.data.frame()
+pp %>% filter(dest %in% dpc_dc[dpc_dc$DPC == "HSR _LAYOUT PC","DC"]) %>% select(wbn,pid) %>% summarise(n_distinct(pid))
+
+pp <- pp %>% mutate(rowid = 1:nrow(pp)) %>% group_by(rowid) %>% mutate(DPC = ifelse(is.na(DPC),dest,DPC)) %>% as.data.frame() #%>% 
+xx1 <- pp %>% filter(dest %in% dpc_dc[dpc_dc$DPC == "HSR _LAYOUT PC","DC"]) %>% arrange(wbn,sd) %>% select(wbn,pid,dest,sd) 
+write.csv(xx,file="check.csv")
+
+#filter(gsub(" [(]KARNATAKA[)]","",cs.dest) %in% unique(c("",dpc_dc$DPC,dpc_dc$DC)) | grepl("KARNATAKA",cs.dest))
+pp_1 <- pp %>% select(-rowid) %>% group_by(wbn) %>% summarise(sd = max(sd)) %>% as.data.frame()
+
+pp_1 <- pp_1 %>% inner_join(pp) %>% as.data.frame()
+pp_1 %>% filter(dest %in% dpc_dc[dpc_dc$DPC == "HSR _LAYOUT PC","DC"]) %>% select(wbn,pid) %>% summarise(n_distinct(pid))
+xx <- pp_1 %>% filter(dest %in% dpc_dc[dpc_dc$DPC == "HSR _LAYOUT PC","DC"]) %>% arrange(wbn,sd) %>% select(wbn,pid,dest,sd)
+
+# pp_1 <- pp_1 %>% filter(dest %in% unique(c(dpc_dc$DPC,dpc_dc$DC)))
+# pp_1 %>% filter(grepl(paste(dpc_dc[dpc_dc$DPC == "HSR _LAYOUT PC","DC"],collapse = "|"),dest)) %>% arrange(wbn,sd) %>% select(wbn,pid,dest,sd)  %>% summarise(n_distinct(pid))
+packages1 <- pp_1 %>% select(pid,DPC) %>% unique() %>% arrange(DPC)
+packages1 %>% filter(DPC == "HSR _LAYOUT PC")
+row.names(packages1) <- 1:nrow(packages1)
+write.csv(packages1,file = "bag_counts7thApril.csv")
